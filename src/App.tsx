@@ -1,0 +1,40 @@
+import { lazy, Suspense, useMemo, useReducer } from "react";
+import { PRESETS } from "./presets";
+import { reducer, INITIAL_STATE } from "./state";
+import { evaluateBSplineCurve, evaluateNurbsCurve } from "./math/curve";
+import { CurveView } from "./components/CurveView";
+import { BasisGraph } from "./components/BasisGraph";
+import { ParameterPanel } from "./components/ParameterPanel";
+import { FormulaInspector } from "./components/FormulaInspector";
+import { RecursionView } from "./components/RecursionView";
+import { ValuesPanel } from "./components/ValuesPanel";
+const HomogeneousView = lazy(() => import("./components/HomogeneousView").then((module) => ({ default: module.HomogeneousView })));
+
+export default function App() {
+  const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const definition = useMemo(() => ({ degree: state.degree, controlPoints: state.controlPoints, knots: state.knots, weights: state.weights }), [state.degree, state.controlPoints, state.knots, state.weights]);
+  const evaluation = state.splineType === "nurbs" ? evaluateNurbsCurve(definition, state.t) : evaluateBSplineCurve(definition, state.t);
+  const contributions = state.splineType === "nurbs" ? evaluation.rationalBasis : evaluation.basis;
+  const selectedIndex = Math.min(state.selectedBasis.i, state.controlPoints.length - 1);
+
+  return <main className="app-shell">
+    <header className="app-header"><div className="brand"><div className="brand-mark">B<sup>p</sup></div><h1>B-Spline / NURBS Learning Tool</h1></div><div className="header-status"><span className="status-dot" /> interactive lesson</div></header>
+    <section className="toolbar" aria-label="Spline controls">
+      <label><span>Type</span><select value={state.splineType} onChange={(e) => dispatch({ type: "setSplineType", value: e.target.value as "bspline" | "nurbs" })}><option value="bspline">B-Spline</option><option value="nurbs">NURBS</option></select></label>
+      <label><span>Degree p <small>(order = {state.degree + 1})</small></span><select value={state.degree} onChange={(e) => dispatch({ type: "setDegree", value: Number(e.target.value) })}>{[1,2,3,4,5].map((degree) => <option key={degree} value={degree} disabled={degree >= state.controlPoints.length}>{degree}</option>)}</select></label>
+      <label><span>Control points</span><select value={state.controlPoints.length} onChange={(e) => dispatch({ type: "setPointCount", value: Number(e.target.value) })}>{Array.from({ length: 12 - state.degree }, (_, i) => state.degree + 1 + i).map((count) => <option key={count}>{count}</option>)}</select></label>
+      <label className="preset-control"><span>Preset</span><select value={state.presetId ?? "custom"} onChange={(e) => { const preset = PRESETS.find((item) => item.id === e.target.value); if (preset) dispatch({ type: "loadPreset", preset }); }}><option value="custom" disabled>Custom curve</option>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select></label>
+      <button className="secondary reset-button" onClick={() => dispatch({ type: "reset" })}>Reset</button>
+    </section>
+    <nav className="view-tabs" aria-label="Main view"><button className={state.viewMode === "curve" ? "active" : ""} onClick={() => dispatch({ type: "setView", value: "curve" })}>Curve</button><button className={state.viewMode === "basis" ? "active" : ""} onClick={() => dispatch({ type: "setView", value: "basis" })}>Basis / Recursion</button><button className={state.viewMode === "homogeneous" ? "active" : ""} disabled={state.splineType !== "nurbs"} onClick={() => dispatch({ type: "setView", value: "homogeneous" })}>Homogeneous</button></nav>
+    <div className="workspace">
+      {state.viewMode === "curve" && <CurveView definition={definition} type={state.splineType} t={state.t} contributions={contributions} selectedIndex={selectedIndex} hoveredIndex={state.hoveredIndex} onMovePoint={(index, point) => dispatch({ type: "movePoint", index, point })} onSelect={(i) => dispatch({ type: "selectBasis", i })} onHover={(value) => dispatch({ type: "hoverIndex", value })} />}
+      {state.viewMode === "basis" && <RecursionView definition={definition} t={state.t} root={state.recursionRoot} selected={state.selectedBasis} selectedTerm={state.selectedFormulaTerm} onSelect={(i, degree) => dispatch({ type: "selectBasis", i, degree })} onTerm={(value) => dispatch({ type: "selectTerm", value })} />}
+      {state.viewMode === "homogeneous" && state.splineType === "nurbs" && <Suspense fallback={<section className="main-canvas loading-canvas">…</section>}><HomogeneousView definition={definition} t={state.t} contributions={contributions} selectedIndex={selectedIndex} onSelect={(i) => dispatch({ type: "selectBasis", i })} /></Suspense>}
+      <FormulaInspector definition={definition} splineType={state.splineType} t={state.t} selected={state.selectedBasis} term={state.selectedFormulaTerm} onTerm={(value) => dispatch({ type: "selectTerm", value })} />
+    </div>
+    <BasisGraph definition={definition} type={state.splineType} t={state.t} selected={state.selectedBasis} selectedTerm={state.selectedFormulaTerm} hoveredIndex={state.hoveredIndex} showN={state.showN} showR={state.showR} showRecursion={state.showRecursionGraph} onSelect={(i, degree) => dispatch({ type: "selectBasis", i, degree })} onHover={(value) => dispatch({ type: "hoverIndex", value })} onToggleN={() => dispatch({ type: "toggleN" })} onToggleR={() => dispatch({ type: "toggleR" })} onToggleRecursion={() => dispatch({ type: "toggleRecursionGraph" })} />
+    <ParameterPanel definition={definition} type={state.splineType} t={state.t} selectedIndex={selectedIndex} hoveredIndex={state.hoveredIndex} onKnot={(index, value) => dispatch({ type: "setKnot", index, value })} onT={(value) => dispatch({ type: "setT", value })} onWeight={(index, value) => dispatch({ type: "setWeight", index, value })} onResetWeights={() => dispatch({ type: "resetWeights" })} onSelect={(i) => dispatch({ type: "selectBasis", i })} />
+    <ValuesPanel definition={definition} evaluation={evaluation} type={state.splineType} />
+  </main>;
+}
