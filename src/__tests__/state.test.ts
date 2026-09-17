@@ -8,7 +8,8 @@ describe("application interaction state", () => {
 
     expect(childSelected.recursionRoot).toEqual({ i: 2, degree: 3 });
     expect(childSelected.selectedBasis).toEqual({ i: 3, degree: 2 });
-    expect(childSelected.showRecursionGraph).toBe(true);
+    expect(childSelected.basisSelectionActive).toBe(true);
+    expect(childSelected.showOtherBasis).toBe(false);
   });
 
   it("enforces knot ordering and the valid t interval in the reducer", () => {
@@ -20,10 +21,15 @@ describe("application interaction state", () => {
     expect(reducer(narrowed, { type: "setT", value: 1 }).t).toBe(0.8);
   });
 
-  it("shows recursion details only while the basis view is active", () => {
-    const basis = reducer(INITIAL_STATE, { type: "setView", value: "basis" });
-    expect(basis.showRecursionGraph).toBe(true);
-    expect(reducer(basis, { type: "setView", value: "curve" }).showRecursionGraph).toBe(false);
-    expect(reducer(basis, { type: "setView", value: "homogeneous" }).showRecursionGraph).toBe(false);
+  it("keeps the focus degree while toggling selection and other-basis display independently", () => {
+    const focused = reducer(INITIAL_STATE, { type: "selectBasis", i: 1, degree: 2 });
+    const cleared = reducer(focused, { type: "selectBasis", i: 1, degree: 2 });
+    expect(cleared.basisSelectionActive).toBe(false);
+    expect(cleared.selectedBasis.degree).toBe(2);
+
+    const shown = reducer(cleared, { type: "toggleOtherBasis" });
+    expect(shown.showOtherBasis).toBe(true);
+    expect(reducer(shown, { type: "selectBasis", i: 2, degree: 2 }).showOtherBasis).toBe(true);
+    expect(reducer(shown, { type: "setView", value: "curve" }).showOtherBasis).toBe(true);
   });
 });

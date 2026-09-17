@@ -3,7 +3,7 @@ import { indexColor } from "../visual";
 type Props = {
   contributions: number[];
   kind: "N" | "R";
-  selectedIndex: number;
+  selectedIndex?: number;
   onSelect: (index: number) => void;
 };
 

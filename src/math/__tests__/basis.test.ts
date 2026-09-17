@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluateBasis, evaluateBasisTable } from "../basis";
-import { evaluateBSplineCurve, evaluateNurbsCurve } from "../curve";
+import { evaluateBSplineCurve, evaluateCurveAtBasisDegree, evaluateNurbsCurve } from "../curve";
 import { evaluateHomogeneousCurve, projectHomogeneous } from "../homogeneous";
 import { PRESETS } from "../../presets";
 import { EPSILON } from "../types";
@@ -84,6 +84,35 @@ describe("B-spline basis", () => {
 });
 
 describe("B-spline / NURBS relation", () => {
+  it("evaluates every visible recursion degree without losing a finite curve point", () => {
+    for (const presetValue of PRESETS) {
+      const s = presetValue.spline;
+      const lower = s.knots[s.degree];
+      const upper = s.knots[s.controlPoints.length];
+      for (let q = 0; q <= s.degree; q += 1) {
+        for (const t of [lower, (lower + upper) / 2, upper]) {
+          const evaluation = evaluateCurveAtBasisDegree(s, t, q, presetValue.type);
+          expect(Number.isFinite(evaluation.point.x)).toBe(true);
+          expect(Number.isFinite(evaluation.point.y)).toBe(true);
+          expect(evaluation.basis.reduce((sum, value) => sum + value, 0)).toBeCloseTo(1, 8);
+          expect(evaluation.rationalBasis.reduce((sum, value) => sum + value, 0)).toBeCloseTo(1, 8);
+        }
+      }
+    }
+  });
+
+  it("maps a lower-degree row symmetrically to the first control points", () => {
+    const s = preset("open-uniform-cubic");
+    const start = evaluateCurveAtBasisDegree(s, 0, 2, "bspline");
+    const end = evaluateCurveAtBasisDegree(s, 1, 2, "bspline");
+
+    expect(start.point).toEqual(s.controlPoints[0]);
+    expect(end.point.x).toBeCloseTo(s.controlPoints[4].x, 9);
+    expect(end.point.y).toBeCloseTo(s.controlPoints[4].y, 9);
+    expect(start.basis[5]).toBe(0);
+    expect(end.basis[5]).toBe(0);
+  });
+
   it("matches B-spline when all weights are one", () => {
     const s = preset("open-uniform-cubic");
     const bs = evaluateBSplineCurve(s, 0.42);

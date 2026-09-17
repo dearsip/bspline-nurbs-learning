@@ -16,12 +16,13 @@ export type AppState = {
   viewMode: ViewMode;
   basisSubmode: BasisSubmode;
   selectedBasis: { i: number; degree: number };
+  basisSelectionActive: boolean;
   recursionRoot: { i: number; degree: number };
   selectedFormulaTerm?: FormulaTerm;
   hoveredIndex?: number;
   showN: boolean;
   showR: boolean;
-  showRecursionGraph: boolean;
+  showOtherBasis: boolean;
   presetId?: string;
   resetSnapshot: SplinePreset;
 };
@@ -51,10 +52,11 @@ export function stateFromPreset(preset: SplinePreset): AppState {
     viewMode: "curve",
     basisSubmode: "overview",
     selectedBasis: { i: selectedIndex, degree: snapshot.spline.degree },
+    basisSelectionActive: true,
     recursionRoot: { i: selectedIndex, degree: snapshot.spline.degree },
     showN: true,
     showR: true,
-    showRecursionGraph: false,
+    showOtherBasis: false,
     presetId: snapshot.id,
     resetSnapshot: clonePreset(snapshot),
   };
@@ -112,11 +114,12 @@ export type Action =
   | { type: "resetWeights" }
   | { type: "movePoint"; index: number; point: Vec2 }
   | { type: "selectBasis"; i: number; degree?: number }
+  | { type: "clearBasisSelection" }
   | { type: "selectTerm"; value?: FormulaTerm }
   | { type: "hoverIndex"; value?: number }
   | { type: "toggleN" }
   | { type: "toggleR" }
-  | { type: "toggleRecursionGraph" };
+  | { type: "toggleOtherBasis" };
 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -136,7 +139,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case "setPointCount":
       return freshState(state, Math.min(state.degree, action.value - 1), action.value);
     case "setView":
-      return { ...state, viewMode: action.value, showRecursionGraph: action.value === "basis" };
+      return { ...state, viewMode: action.value };
     case "setSubmode":
       return { ...state, basisSubmode: action.value };
     case "setT":
@@ -164,16 +167,23 @@ export function reducer(state: AppState, action: Action): AppState {
       const controlPoints = state.controlPoints.map((point, i) => i === action.index ? action.point : point);
       return { ...state, controlPoints, presetId: undefined };
     }
-    case "selectBasis":
+    case "selectBasis": {
+      const degree = action.degree ?? state.degree;
+      if (state.basisSelectionActive && state.selectedBasis.i === action.i && state.selectedBasis.degree === degree) {
+        return { ...state, basisSelectionActive: false, selectedFormulaTerm: undefined };
+      }
       return {
         ...state,
-        selectedBasis: { i: action.i, degree: action.degree ?? state.degree },
-        recursionRoot: (action.degree ?? state.degree) === state.degree
+        selectedBasis: { i: action.i, degree },
+        basisSelectionActive: true,
+        recursionRoot: degree === state.degree
           ? { i: action.i, degree: state.degree }
           : state.recursionRoot,
-        showRecursionGraph: action.degree === undefined ? state.showRecursionGraph : true,
         selectedFormulaTerm: undefined,
       };
+    }
+    case "clearBasisSelection":
+      return { ...state, basisSelectionActive: false, selectedFormulaTerm: undefined };
     case "selectTerm":
       return { ...state, selectedFormulaTerm: action.value };
     case "hoverIndex":
@@ -182,7 +192,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, showN: !state.showN };
     case "toggleR":
       return { ...state, showR: !state.showR };
-    case "toggleRecursionGraph":
-      return { ...state, showRecursionGraph: !state.showRecursionGraph };
+    case "toggleOtherBasis":
+      return { ...state, showOtherBasis: !state.showOtherBasis };
   }
 }

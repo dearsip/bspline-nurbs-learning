@@ -10,16 +10,17 @@ type Props = {
   type: "bspline" | "nurbs";
   t: number;
   selected: { i: number; degree: number };
+  selectionActive: boolean;
   selectedTerm?: FormulaTerm;
   hoveredIndex?: number;
   showN: boolean;
   showR: boolean;
-  showRecursion: boolean;
+  showOtherBasis: boolean;
   onSelect: (index: number, degree?: number) => void;
   onHover: (index?: number) => void;
   onToggleN: () => void;
   onToggleR: () => void;
-  onToggleRecursion: () => void;
+  onToggleOtherBasis: () => void;
 };
 
 const W = 1000;
@@ -35,10 +36,14 @@ export function BasisGraph(props: Props) {
   const selectedI = Math.min(props.selected.i, (props.definition.knots.length - 1) - selectedQ - 1);
   const samples = useMemo(() => Array.from({ length: 241 }, (_, s) => {
     const t = s / 240;
-    if (t < lower || t > upper) return { t, levels: [] as number[][], r: props.definition.controlPoints.map(() => 0) };
+    if (t < lower || t > upper) return { t, levels: [] as number[][], rLevels: [] as number[][] };
     const table = evaluateBasisTable(props.definition.knots, props.definition.controlPoints.length, props.definition.degree, t);
-    const n = table.levels[props.definition.degree].slice(0, props.definition.controlPoints.length);
-    return { t, levels: table.levels, r: evaluateRationalBasis(n, props.definition.weights) };
+    const rLevels = table.levels.map((level) => {
+      const basis = level.slice(0, props.definition.controlPoints.length);
+      const rational = evaluateRationalBasis(basis, props.definition.weights);
+      return [...rational, ...new Array(Math.max(0, level.length - rational.length)).fill(0)];
+    });
+    return { t, levels: table.levels, rLevels };
   }), [props.definition, lower, upper]);
 
   const values = (i: number, q: number) => samples.map((sample) => sample.levels[q]?.[i] ?? 0);
@@ -79,38 +84,35 @@ export function BasisGraph(props: Props) {
     <div className="toggles basis-toggles">
       <label><input type="checkbox" checked={props.showN} onChange={props.onToggleN} /> N<sub>i,p</sub></label>
       {props.type === "nurbs" && <label><input type="checkbox" checked={props.showR} onChange={props.onToggleR} /> R<sub>i,p</sub></label>}
-      <label><input type="checkbox" checked={props.showRecursion} onChange={props.onToggleRecursion} /> selected recursion</label>
+      <label><input type="checkbox" checked={props.showOtherBasis} onChange={props.onToggleOtherBasis} /> other basis</label>
     </div>
     <svg className="basis-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Basis-function graph with knot positions">
       <line x1={scale.left} y1={Y0} x2={W - scale.right} y2={Y0} className="axis-line" />
-      <rect x={scale.x(supportStart)} y="26" width={Math.max(0, scale.x(supportEnd) - scale.x(supportStart))} height={Y0 - 26} className="support-band" />
-      {props.selectedTerm && selectedQ > 0 && <>
-        <rect x={scale.x(termStart)} y={Y0 - 15} width={Math.max(0, scale.x(termEnd) - scale.x(termStart))} height="14" className="denominator-band" />
+      {props.selectionActive && <rect x={scale.x(supportStart)} y="26" width={Math.max(0, scale.x(supportEnd) - scale.x(supportStart))} height={Y0 - 26} className="support-band" />}
+      {props.selectionActive && props.selectedTerm && selectedQ > 0 && <>
+        <rect x={scale.x(termStart)} y={Y0 - 10} width={Math.max(0, scale.x(termEnd) - scale.x(termStart))} height="7" className="denominator-band" />
         <rect x={scale.x(Math.min(numeratorStart, numeratorEnd))} y={Y0 - 10} width={Math.abs(scale.x(numeratorEnd) - scale.x(numeratorStart))} height="9" className="numerator-band" />
       </>}
-      {!props.showRecursion && props.definition.controlPoints.map((_, i) => {
-        const emphasized = selectedQ === props.definition.degree && selectedI === i || props.hoveredIndex === i;
-        const nPath = pathFor(values(i, props.definition.degree));
-        const rPath = pathFor(samples.map((sample) => sample.r[i] ?? 0));
-        return <g key={i} onClick={() => props.onSelect(i)} onPointerEnter={() => props.onHover(i)} onPointerLeave={() => props.onHover(undefined)} className="basis-hit">
+      {Array.from({ length: currentTable?.levels[selectedQ]?.length ?? 0 }, (_, i) => {
+        if (props.selectionActive && !props.showOtherBasis && i !== selectedI) return null;
+        const emphasized = props.selectionActive && selectedI === i || props.hoveredIndex === i;
+        const nPath = pathFor(values(i, selectedQ));
+        const rPath = pathFor(samples.map((sample) => sample.rLevels[selectedQ]?.[i] ?? 0));
+        return <g key={i} onClick={() => props.onSelect(i, selectedQ)} onPointerEnter={() => props.onHover(i)} onPointerLeave={() => props.onHover(undefined)} className="basis-hit">
           {props.showN && <path d={nPath} fill="none" stroke={indexColor(i)} strokeWidth={emphasized ? 4 : props.type === "nurbs" ? 1.5 : 2.3} strokeDasharray={props.type === "nurbs" ? "6 4" : undefined} opacity={emphasized ? 1 : .7} />}
           {props.type === "nurbs" && props.showR && <path d={rPath} fill="none" stroke={indexColor(i)} strokeWidth={emphasized ? 4.5 : 2.5} opacity={emphasized ? 1 : .88} />}
         </g>;
       })}
-      {props.showRecursion && <>
-        {selectedQ > 0 && <>
-          <path d={pathFor(leftChild)} className="child-basis left-child" />
-          <path d={pathFor(rightChild)} className="child-basis right-child" />
-        </>}
-        <path d={pathFor(target)} fill="none" stroke={indexColor(selectedI)} strokeWidth="4.5" className="selected-basis-curve" />
-        {selectedQ > 0 && <>
-          <path d={pathFor(weightedLeft)} className={`weighted-term left-term ${props.selectedTerm === "left" ? "selected-term" : ""}`} />
-          <path d={pathFor(weightedRight)} className={`weighted-term right-term ${props.selectedTerm === "right" ? "selected-term" : ""}`} />
-        </>}
-        {props.selectedTerm && selectedQ > 0 && <>
-          <line x1={scale.x(props.t)} y1={Y0} x2={scale.x(props.t)} y2={Y0 - selectedWeightedValue * YH} className="proportion-weighted" />
-          <line x1={scale.x(props.t)} y1={Y0 - selectedWeightedValue * YH} x2={scale.x(props.t)} y2={Y0 - selectedChildValue * YH} className="proportion-child" />
-        </>}
+      {props.selectionActive && selectedQ > 0 && <>
+        <path d={pathFor(leftChild)} className="child-basis left-child" />
+        <path d={pathFor(rightChild)} className="child-basis right-child" />
+        <path d={pathFor(weightedLeft)} className={`weighted-term left-term ${props.selectedTerm === "left" ? "selected-term" : ""}`} />
+        <path d={pathFor(weightedRight)} className={`weighted-term right-term ${props.selectedTerm === "right" ? "selected-term" : ""}`} />
+      </>}
+      {props.selectionActive && <path d={pathFor(target)} fill="none" stroke={indexColor(selectedI)} strokeWidth="4.5" className="selected-basis-curve" />}
+      {props.selectionActive && props.selectedTerm && selectedQ > 0 && <>
+        <line x1={scale.x(props.t)} y1={Y0} x2={scale.x(props.t)} y2={Y0 - selectedWeightedValue * YH} className="proportion-weighted" />
+        <line x1={scale.x(props.t)} y1={Y0 - selectedWeightedValue * YH} x2={scale.x(props.t)} y2={Y0 - selectedChildValue * YH} className="proportion-child" />
       </>}
       <line x1={scale.x(props.t)} y1="20" x2={scale.x(props.t)} y2={Y0} className="t-guide" />
       <text x={scale.x(props.t) + 6} y="19" className="t-label">t</text>
@@ -119,9 +121,5 @@ export function BasisGraph(props: Props) {
         <text x={scale.x(group.value)} y="210" textAnchor="middle" className="knot-label">{group.indices.length === 1 ? `u${group.indices[0]}` : `u${group.indices[0]}–u${group.indices.at(-1)}`}</text>
       </g>)}
     </svg>
-    {props.showRecursion && <div className="basis-legend">
-      <span className="legend-target">N<sub>{selectedI},{selectedQ}</sub></span>
-      {selectedQ > 0 && <><span className="legend-child-left">N<sub>{selectedI},{selectedQ - 1}</sub></span><span className="legend-child-right">N<sub>{selectedI + 1},{selectedQ - 1}</sub></span><span className="legend-term-left">left weighted term</span><span className="legend-term-right">right weighted term</span></>}
-    </div>}
   </details>;
 }
