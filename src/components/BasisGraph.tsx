@@ -103,13 +103,13 @@ export function BasisGraph(props: Props) {
           {props.type === "nurbs" && props.showR && <path d={rPath} fill="none" stroke={indexColor(i)} strokeWidth={emphasized ? 4.5 : 2.5} opacity={emphasized ? 1 : .88} />}
         </g>;
       })}
+      {props.selectionActive && <path d={pathFor(target)} fill="none" stroke={indexColor(selectedI)} strokeWidth="4.5" className="selected-basis-curve" />}
       {props.selectionActive && selectedQ > 0 && <>
         <path d={pathFor(leftChild)} className="child-basis left-child" />
         <path d={pathFor(rightChild)} className="child-basis right-child" />
         <path d={pathFor(weightedLeft)} className={`weighted-term left-term ${props.selectedTerm === "left" ? "selected-term" : ""}`} />
         <path d={pathFor(weightedRight)} className={`weighted-term right-term ${props.selectedTerm === "right" ? "selected-term" : ""}`} />
       </>}
-      {props.selectionActive && <path d={pathFor(target)} fill="none" stroke={indexColor(selectedI)} strokeWidth="4.5" className="selected-basis-curve" />}
       {props.selectionActive && props.selectedTerm && selectedQ > 0 && <>
         <line x1={scale.x(props.t)} y1={Y0} x2={scale.x(props.t)} y2={Y0 - selectedWeightedValue * YH} className="proportion-weighted" />
         <line x1={scale.x(props.t)} y1={Y0 - selectedWeightedValue * YH} x2={scale.x(props.t)} y2={Y0 - selectedChildValue * YH} className="proportion-child" />
